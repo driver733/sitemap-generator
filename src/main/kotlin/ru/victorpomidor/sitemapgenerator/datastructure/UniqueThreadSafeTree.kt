@@ -9,11 +9,17 @@ class UniqueThreadSafeTree<T>(rootValue: T) : UniqueTree<T> {
 
     override fun getRoot(): TreeNode<T> = root
 
-    @Synchronized override fun putExclusive(parent: TreeNode<T>, value: T): TreeNode<T>? {
-        return if(elements.add(value)){
-            TreeNode(value, parent)
-                .also {  parent.childs.add(it) }
-        } else null
-    }
+    override fun putExclusive(parent: TreeNode<T>, value: T): PutResult<TreeNode<T>> {
+        if (elements.contains(value)) {
+            return PutResult.Duplicated()
+        }
 
+        synchronized(this) {
+            return if (elements.add(value)) {
+                val newNode = TreeNode(value, parent)
+                parent.childs.add(newNode)
+                PutResult.Ok(newNode)
+            } else PutResult.Duplicated()
+        }
+    }
 }

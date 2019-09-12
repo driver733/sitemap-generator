@@ -2,22 +2,29 @@ package ru.victorpomidor.sitemapgenerator
 
 import ru.victorpomidor.sitemapgenerator.datastructure.UniqueThreadSafeTree
 import ru.victorpomidor.sitemapgenerator.model.Link
+import ru.victorpomidor.sitemapgenerator.page.JsoupLinkParser
+import ru.victorpomidor.sitemapgenerator.page.JsoupPageDownloader
+import ru.victorpomidor.sitemapgenerator.page.SameDomainFilter
 import ru.victorpomidor.sitemapgenerator.print.FileSitemapPrinter
 import ru.victorpomidor.sitemapgenerator.print.StdoutSitemapPrinter
 import java.util.concurrent.Executors
 
 fun main(args: Array<String>) {
-    val url = "http://gousmandesign.blogspot.com"
+    val url = "http://monzo.com"
+
+    val siteTree = UniqueThreadSafeTree(Link(url = url, text = url))
+    val linkParser = JsoupLinkParser(SameDomainFilter())
+    val pageDownloader = JsoupPageDownloader()
+    val executorService = Executors.newFixedThreadPool(500)
+
     val sitemapGenerator = SitemapGenerator(
-        url,
-        UniqueThreadSafeTree(Link(url)),
-        Executors.newFixedThreadPool(500)
+        siteTree,
+        executorService,
+        linkParser,
+        pageDownloader
     )
-    val sitemap = sitemapGenerator.generateSitemap()
+    val sitemap = sitemapGenerator.generateSitemap(url)
 
-    val stdoutPrinter = StdoutSitemapPrinter()
-    val filePrinter = FileSitemapPrinter()
-
-    stdoutPrinter.print(sitemap)
-    filePrinter.print(sitemap)
+    StdoutSitemapPrinter().print(sitemap)
+    FileSitemapPrinter().print(sitemap)
 }

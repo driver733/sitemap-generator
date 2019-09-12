@@ -1,44 +1,83 @@
 package ru.victorpomidor.sitemapgenerator
 
-import org.jsoup.Jsoup
+import ru.victorpomidor.sitemapgenerator.datastructure.PutResult
 import ru.victorpomidor.sitemapgenerator.datastructure.TreeNode
 import ru.victorpomidor.sitemapgenerator.datastructure.UniqueTree
+import ru.victorpomidor.sitemapgenerator.model.DownloadResult
 import ru.victorpomidor.sitemapgenerator.model.Link
 import ru.victorpomidor.sitemapgenerator.model.Sitemap
+import ru.victorpomidor.sitemapgenerator.page.LinkParser
+import ru.victorpomidor.sitemapgenerator.page.PageDownloader
+import ru.victorpomidor.sitemapgenerator.utils.Log
+import ru.victorpomidor.sitemapgenerator.utils.timed
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.ForkJoinPool
+import java.util.concurrent.atomic.AtomicInteger
 
 class SitemapGenerator(
-    private val url: String,
     private val siteTree: UniqueTree<Link>,
-    executorService: ExecutorService = Executors.newWorkStealingPool()
-    ) {
-    private val executor = executorService
+    private val executorService: ExecutorService = ForkJoinPool.commonPool(),
+    private val linkParser: LinkParser,
+    private val pageDownloader: PageDownloader
+) {
+    companion object : Log()
 
-    fun generateSitemap(): Sitemap {
-        val rootLink = Link(url)
-        val siteTree = siteTree
-        generateSitemapTree(siteTree.getRoot(), siteTree, 0)
-        return Sitemap(rootLink, siteTree.getRoot())
+    private val tasksCount = AtomicInteger(0)
+
+    fun generateSitemap(url: String): Sitemap {
+        log.info("generate map for $url")
+
+        timed {
+            generateSitemapTree(siteTree.getRoot(), siteTree, url, 0)
+            waitWhile { tasksCount.get() > 0 }
+            executorService.shutdownNow()
+        }.log("map for $url generated for {} millis")
+
+        return Sitemap(siteTree.getRoot())
     }
 
-    private fun generateSitemapTree(currentNode: TreeNode<Link>, tree: UniqueTree<Link>, depth: Int) {
-        val links = getLinks(currentNode.value.url)
+    private fun generateSitemapTree(currentNode: TreeNode<Link>, tree: UniqueTree<Link>, baseUrl: String, depth: Int) {
+        val tasksBefore = tasksCount.incrementAndGet()
+        log.debug("New task for url {} on level {}. Task count: {}", currentNode.value.url, depth, tasksBefore)
+        try {
+            when (val page = pageDownloader.downloadPage(currentNode.value.url, baseUrl)) {
+                is DownloadResult.Ok -> processPage(page, baseUrl, tree, currentNode, depth)
+                is DownloadResult.Error -> currentNode.value = currentNode.value.copy(error = page.errorMessage)
+            }
+        } catch (e: Exception) {
+            log.error("error: $e")
+        }
+
+        val tasksAfter = tasksCount.decrementAndGet()
+        log.debug(
+            "Over executing task for url {} on level {}. Task count: {}",
+            currentNode.value.url,
+            depth,
+            tasksAfter
+        )
+    }
+
+    private fun processPage(
+        page: DownloadResult.Ok,
+        baseUrl: String,
+        tree: UniqueTree<Link>,
+        currentNode: TreeNode<Link>,
+        depth: Int
+    ) {
+        val links = linkParser.parsePage(page.content, baseUrl)
         links.forEach {
-            val childNode = tree.putExclusive(currentNode, it)
-            if (childNode != null) {
-                println("level $depth: success add ${it.url}")
-                executor.submit{ generateSitemapTree(childNode, tree, depth + 1) }.get()
+            val putResult = tree.putExclusive(currentNode, it)
+            if (putResult is PutResult.Ok) {
+                log.debug("level $depth: success add ${it.url}")
+                executorService
+                    .submit { generateSitemapTree(putResult.element, tree, baseUrl, depth + 1) }
             }
         }
     }
 
-    private fun getLinks(url: String): List<Link> {
-        return Jsoup
-            .connect(url)
-            .get()
-            .select("a")
-            .filter { it.attr("href").startsWith(url)  }
-            .map { Link(it.attr("href"), it.text()) }
+    private fun waitWhile(condition: () -> Boolean) {
+        while (condition.invoke()) {
+            Thread.sleep(1000)
+        }
     }
 }
