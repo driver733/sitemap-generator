@@ -10,9 +10,14 @@ class JsoupPageDownloader(private val timeout: Int = 30000) : PageDownloader {
     override fun downloadPage(url: String, baseUrl: String): DownloadResult {
         return try {
             log.debug("start download $url")
+
+            val urlWithProtocol = if (!url.startsWith("http:") && !url.startsWith("https")) {
+                "http://$url"
+            } else url
+
             DownloadResult.Ok(
                 Jsoup
-                    .connect(url)
+                    .connect(urlWithProtocol)
                     .timeout(timeout)
                     .get()
                     .toString()

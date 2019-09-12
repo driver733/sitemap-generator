@@ -11,7 +11,7 @@ abstract class StringSitemapPrinter : SitemapPrinter {
 
     private fun printNode(baseUrl: String, node: TreeNode<Link>, depth: Int): StringBuilder {
         val builder = StringBuilder()
-            .append("-".repeat(depth * 2))
+            .append(" ".repeat(depth * 2))
             .append(printLink(node.value, baseUrl))
             .append("\n")
 
