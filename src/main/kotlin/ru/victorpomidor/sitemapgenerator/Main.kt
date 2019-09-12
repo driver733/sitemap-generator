@@ -15,11 +15,9 @@ fun main(args: Array<String>) {
     val siteTree = UniqueThreadSafeTree(Link(url = url, text = url))
     val linkParser = JsoupLinkParser(SameDomainFilter())
     val pageDownloader = JsoupPageDownloader()
-    val executorService = Executors.newFixedThreadPool(500)
 
     val sitemapGenerator = SitemapGenerator(
         siteTree,
-        executorService,
         linkParser,
         pageDownloader
     )

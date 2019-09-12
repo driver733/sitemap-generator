@@ -1,5 +1,10 @@
 package ru.victorpomidor.sitemapgenerator
 
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import ru.victorpomidor.sitemapgenerator.datastructure.PutResult
 import ru.victorpomidor.sitemapgenerator.datastructure.TreeNode
 import ru.victorpomidor.sitemapgenerator.datastructure.UniqueTree
@@ -10,33 +15,36 @@ import ru.victorpomidor.sitemapgenerator.page.LinkParser
 import ru.victorpomidor.sitemapgenerator.page.PageDownloader
 import ru.victorpomidor.sitemapgenerator.utils.Log
 import ru.victorpomidor.sitemapgenerator.utils.timed
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.ForkJoinPool
 import java.util.concurrent.atomic.AtomicInteger
 
 class SitemapGenerator(
     private val siteTree: UniqueTree<Link>,
-    private val executorService: ExecutorService = ForkJoinPool.commonPool(),
     private val linkParser: LinkParser,
     private val pageDownloader: PageDownloader
 ) {
     companion object : Log()
 
     private val tasksCount = AtomicInteger(0)
+    private val tasks: MutableList<Deferred<Unit>> = mutableListOf()
 
     fun generateSitemap(url: String): Sitemap {
         log.info("generate map for $url")
-
         timed {
-            generateSitemapTree(siteTree.getRoot(), siteTree, url, 0)
-            waitWhile { tasksCount.get() > 0 }
-            executorService.shutdownNow()
+            runBlocking {
+                generateSitemapTree(siteTree.getRoot(), siteTree, url, 0)
+                tasks.awaitAll()
+            }
         }.log("map for $url generated for {} millis")
 
         return Sitemap(siteTree.getRoot())
     }
 
-    private fun generateSitemapTree(currentNode: TreeNode<Link>, tree: UniqueTree<Link>, baseUrl: String, depth: Int) {
+    private suspend fun generateSitemapTree(
+        currentNode: TreeNode<Link>,
+        tree: UniqueTree<Link>,
+        baseUrl: String,
+        depth: Int
+    ) {
         val tasksBefore = tasksCount.incrementAndGet()
         log.debug("New task for url {} on level {}. Task count: {}", currentNode.value.url, depth, tasksBefore)
         try {
@@ -57,7 +65,7 @@ class SitemapGenerator(
         )
     }
 
-    private fun processPage(
+    private suspend fun processPage(
         page: DownloadResult.Ok,
         baseUrl: String,
         tree: UniqueTree<Link>,
@@ -69,8 +77,7 @@ class SitemapGenerator(
             val putResult = tree.putExclusive(currentNode, it)
             if (putResult is PutResult.Ok) {
                 log.debug("level $depth: success add ${it.url}")
-                executorService
-                    .submit { generateSitemapTree(putResult.element, tree, baseUrl, depth + 1) }
+                tasks.add(GlobalScope.async { generateSitemapTree(putResult.element, tree, baseUrl, depth + 1) })
             }
         }
     }
