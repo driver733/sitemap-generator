@@ -10,7 +10,7 @@ import ru.victorpomidor.sitemapgenerator.print.StdoutSitemapPrinter
 import java.util.concurrent.Executors
 
 fun main(args: Array<String>) {
-    val url = "http://monzo.com"
+    val url = args[0]
 
     val siteTree = UniqueThreadSafeTree(Link(url = url, text = url))
     val linkParser = JsoupLinkParser(SameDomainFilter())
