@@ -1,7 +1,7 @@
 package ru.victorpomidor.sitemapgenerator
 
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import ru.victorpomidor.sitemapgenerator.datastructure.PutResult
 import ru.victorpomidor.sitemapgenerator.datastructure.TreeNode
@@ -66,18 +66,27 @@ class SitemapGenerator(
         depth: Int
     ) {
         val links = linkParser.parsePage(page.content, baseUrl)
-        links.forEach {
-            val putResult = tree.putExclusive(currentNode, it)
-            if (putResult is PutResult.Ok) {
-                log.debug("level $depth: success add ${it.url}")
-                GlobalScope.async { generateSitemapTree(putResult.element, tree, baseUrl, depth + 1) }
-            }
+        links.map {
+           coroutineScope {
+               async {
+                   val putResult = tree.putExclusive(currentNode, it)
+                   if (putResult is PutResult.Ok) {
+                       log.debug("level $depth: success add ${it.url}")
+                       coroutineScope {
+                           async {
+                               generateSitemapTree(putResult.element, tree, baseUrl, depth + 1)
+                           }
+                       }
+                   }
+               }
+           }
         }
     }
 
     private fun waitWhile(condition: () -> Boolean) {
         while (condition.invoke()) {
-            Thread.sleep(1000)
+            Thread.sleep(100)
         }
     }
+
 }
