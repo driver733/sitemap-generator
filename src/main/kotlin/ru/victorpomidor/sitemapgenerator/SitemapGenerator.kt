@@ -2,6 +2,7 @@ package ru.victorpomidor.sitemapgenerator
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import ru.victorpomidor.sitemapgenerator.datastructure.PutResult
 import ru.victorpomidor.sitemapgenerator.datastructure.TreeNode
@@ -83,9 +84,9 @@ class SitemapGenerator(
         }
     }
 
-    private fun waitWhile(condition: () -> Boolean) {
+    private suspend fun waitWhile(condition: () -> Boolean) {
         while (condition.invoke()) {
-            Thread.sleep(100)
+            delay(100)
         }
     }
 
